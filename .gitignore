@@ -1,0 +1,10 @@
+node_modules/
+.env
+bot_data.db
+bot_data.db-wal
+bot_data.db-shm
+*.log
+__pycache__/
+ticket-system/database.sqlite
+ticket-system/database.sqlite-wal
+ticket-system/database.sqlite-shm
