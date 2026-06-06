@@ -46,6 +46,11 @@ async function initDatabase() {
                 developerRoleIds TEXT
             );
         `);
+        
+        // Migrate existing table to include new columns if they are missing
+        try { await sqliteDb.exec('ALTER TABLE guild_settings ADD COLUMN messageLogChannelId TEXT;'); } catch (e) {}
+        try { await sqliteDb.exec('ALTER TABLE guild_settings ADD COLUMN voiceLogChannelId TEXT;'); } catch (e) {}
+        
         console.log('[DB] Connected to SQLite');
     }
 }
