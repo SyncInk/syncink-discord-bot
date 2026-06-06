@@ -1,14 +1,14 @@
 module.exports = {
     // Ticket System Category ID
-    ticketCategoryId: 'REPLACE_WITH_CATEGORY_ID',
+    ticketCategoryId: '1501030668354977922',
     
     // Log Channel ID
-    logChannelId: 'REPLACE_WITH_LOG_CHANNEL_ID',
+    logChannelId: '1512529091306197113',
     
     // Role IDs that can manage tickets
-    staffRoleIds: ['REPLACE_WITH_STAFF_ROLE_ID'],
-    adminRoleIds: ['REPLACE_WITH_ADMIN_ROLE_ID'],
-    ownerRoleIds: ['REPLACE_WITH_OWNER_ROLE_ID'],
+    staffRoleIds: ['1512788699094585424'],
+    adminRoleIds: ['1512788998928466052'],
+    ownerRoleIds: ['1494137334827061258'],
 
     // Visual Settings
     colors: {

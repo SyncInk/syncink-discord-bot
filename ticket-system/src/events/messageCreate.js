@@ -15,8 +15,10 @@ module.exports = {
         // If ticket is already claimed, ignore
         if (ticket.claimerId) return;
 
+        const guildConfig = await db.getGuildConfig(message.guild.id);
+
         // Check if user is staff
-        const isStaff = [...config.staffRoleIds, ...config.adminRoleIds, ...config.ownerRoleIds].some(roleId => message.member.roles.cache.has(roleId)) || message.member.permissions.has(PermissionFlagsBits.Administrator);
+        const isStaff = [...guildConfig.staffRoleIds, ...guildConfig.adminRoleIds, ...guildConfig.ownerRoleIds, ...guildConfig.developerRoleIds].some(roleId => message.member.roles.cache.has(roleId)) || message.member.permissions.has(PermissionFlagsBits.Administrator);
 
         if (isStaff) {
             // Auto claim
@@ -50,14 +52,16 @@ module.exports = {
             await message.channel.send({ embeds: [claimEmbed] });
             
             // Log the claim
-            const logChannel = message.guild.channels.cache.get(config.logChannelId);
-            if (logChannel) {
-                const logEmbed = new EmbedBuilder()
-                    .setTitle('Ticket Auto-Claimed')
-                    .setDescription(`Channel: <#${message.channel.id}>\nClaimed By: <@${message.author.id}> (via message)`)
-                    .setColor(config.colors.primary)
-                    .setTimestamp();
-                await logChannel.send({ embeds: [logEmbed] }).catch(() => {});
+            if (guildConfig.logChannelId) {
+                const logChannel = message.guild.channels.cache.get(guildConfig.logChannelId);
+                if (logChannel) {
+                    const logEmbed = new EmbedBuilder()
+                        .setTitle('Ticket Auto-Claimed')
+                        .setDescription(`Channel: <#${message.channel.id}>\nClaimed By: <@${message.author.id}> (via message)`)
+                        .setColor(config.colors.primary)
+                        .setTimestamp();
+                    await logChannel.send({ embeds: [logEmbed] }).catch(() => {});
+                }
             }
         }
     },

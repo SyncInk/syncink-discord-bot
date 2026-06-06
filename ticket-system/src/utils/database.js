@@ -33,13 +33,24 @@ async function initDatabase() {
                 status TEXT,
                 createdAt INTEGER,
                 closedAt INTEGER
-            )
+            );
+            CREATE TABLE IF NOT EXISTS guild_settings (
+                guildId TEXT PRIMARY KEY,
+                ticketCategoryId TEXT,
+                logChannelId TEXT,
+                staffRoleIds TEXT,
+                adminRoleIds TEXT,
+                ownerRoleIds TEXT,
+                developerRoleIds TEXT
+            );
         `);
         console.log('[DB] Connected to SQLite');
     }
 }
 
-// Helper functions that abstract away the DB choice
+// ========================
+// TICKET FUNCTIONS
+// ========================
 async function createTicket(data) {
     if (config.database.useMongo) {
         const Ticket = getMongoModel();
@@ -79,7 +90,60 @@ async function updateTicket(channelId, updateData) {
     }
 }
 
-// Lazy load mongoose model
+// ========================
+// GUILD SETTINGS FUNCTIONS
+// ========================
+async function getGuildConfig(guildId) {
+    if (config.database.useMongo) {
+        const Settings = getGuildSettingsModel();
+        let settings = await Settings.findOne({ guildId });
+        if (!settings) {
+            settings = await new Settings({ guildId }).save();
+        }
+        return settings;
+    } else {
+        let row = await sqliteDb.get('SELECT * FROM guild_settings WHERE guildId = ?', [guildId]);
+        if (!row) {
+            await sqliteDb.run('INSERT INTO guild_settings (guildId) VALUES (?)', [guildId]);
+            row = { guildId, ticketCategoryId: null, logChannelId: null, staffRoleIds: null, adminRoleIds: null, ownerRoleIds: null, developerRoleIds: null };
+        }
+        return {
+            guildId: row.guildId,
+            ticketCategoryId: row.ticketCategoryId,
+            logChannelId: row.logChannelId,
+            staffRoleIds: row.staffRoleIds ? JSON.parse(row.staffRoleIds) : [],
+            adminRoleIds: row.adminRoleIds ? JSON.parse(row.adminRoleIds) : [],
+            ownerRoleIds: row.ownerRoleIds ? JSON.parse(row.ownerRoleIds) : [],
+            developerRoleIds: row.developerRoleIds ? JSON.parse(row.developerRoleIds) : []
+        };
+    }
+}
+
+async function updateGuildConfig(guildId, updateData) {
+    if (config.database.useMongo) {
+        const Settings = getGuildSettingsModel();
+        await Settings.updateOne({ guildId }, updateData, { upsert: true });
+    } else {
+        // Ensure row exists
+        await getGuildConfig(guildId);
+        
+        const sets = [];
+        const values = [];
+        for (const [key, value] of Object.entries(updateData)) {
+            sets.push(`${key} = ?`);
+            // stringify arrays for sqlite
+            values.push(Array.isArray(value) ? JSON.stringify(value) : value);
+        }
+        values.push(guildId);
+        if (sets.length > 0) {
+            await sqliteDb.run(`UPDATE guild_settings SET ${sets.join(', ')} WHERE guildId = ?`, values);
+        }
+    }
+}
+
+// ========================
+// MONGOOSE MODELS
+// ========================
 let TicketModel;
 function getMongoModel() {
     if (!TicketModel) {
@@ -98,9 +162,28 @@ function getMongoModel() {
     return TicketModel;
 }
 
+let GuildSettingsModel;
+function getGuildSettingsModel() {
+    if (!GuildSettingsModel) {
+        const schema = new mongoose.Schema({
+            guildId: { type: String, required: true, unique: true },
+            ticketCategoryId: { type: String, default: null },
+            logChannelId: { type: String, default: null },
+            staffRoleIds: { type: [String], default: [] },
+            adminRoleIds: { type: [String], default: [] },
+            ownerRoleIds: { type: [String], default: [] },
+            developerRoleIds: { type: [String], default: [] }
+        });
+        GuildSettingsModel = mongoose.model('GuildSettings', schema);
+    }
+    return GuildSettingsModel;
+}
+
 module.exports = {
     initDatabase,
     createTicket,
     getTicket,
-    updateTicket
+    updateTicket,
+    getGuildConfig,
+    updateGuildConfig
 };

@@ -32,11 +32,24 @@ module.exports = {
         const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
         try {
             console.log(`[SLASH] Started refreshing ${commands.length} application (/) commands.`);
-            const data = await rest.put(
+            
+            // Register to all current guilds for INSTANT update
+            const guilds = client.guilds.cache.map(g => g.id);
+            for (const guildId of guilds) {
+                await rest.put(
+                    Routes.applicationGuildCommands(client.user.id, guildId),
+                    { body: commands }
+                ).catch(() => console.log(`[SLASH] Missing access to register in guild ${guildId}`));
+            }
+            console.log(`[SLASH] Instantly synced commands to ${guilds.length} servers.`);
+
+            // Also register globally (takes up to 1 hour to cache)
+            await rest.put(
                 Routes.applicationCommands(client.user.id),
                 { body: commands },
             );
-            console.log(`[SLASH] Successfully reloaded ${data.length} application (/) commands.`);
+            console.log(`[SLASH] Successfully reloaded global commands.`);
+            
         } catch (error) {
             console.error('[SLASH ERROR]', error);
         }

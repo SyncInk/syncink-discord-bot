@@ -45,7 +45,8 @@ async function handleModalSubmit(interaction, client) {
         const details = interaction.fields.getTextInputValue('ticket_details') || 'No additional details provided.';
         
         const guild = interaction.guild;
-        const categoryId = config.ticketCategoryId;
+        const guildConfig = await db.getGuildConfig(guild.id);
+        const categoryId = guildConfig.ticketCategoryId;
         const category = guild.channels.cache.get(categoryId);
 
         // Permissions array
@@ -61,7 +62,7 @@ async function handleModalSubmit(interaction, client) {
         ];
 
         // Add staff roles permissions
-        const staffRoles = [...config.staffRoleIds, ...config.adminRoleIds, ...config.ownerRoleIds];
+        const staffRoles = [...guildConfig.staffRoleIds, ...guildConfig.adminRoleIds, ...guildConfig.ownerRoleIds, ...guildConfig.developerRoleIds];
         for (const roleId of staffRoles) {
             if (roleId && guild.roles.cache.has(roleId)) {
                 permissionOverwrites.push({
@@ -148,8 +149,10 @@ async function handleButton(interaction, client) {
         return;
     }
 
+    const guildConfig = await db.getGuildConfig(guild.id);
+
     // Check staff permissions
-    const isStaff = [...config.staffRoleIds, ...config.adminRoleIds, ...config.ownerRoleIds].some(roleId => interaction.member.roles.cache.has(roleId)) || interaction.member.permissions.has(PermissionFlagsBits.Administrator);
+    const isStaff = [...guildConfig.staffRoleIds, ...guildConfig.adminRoleIds, ...guildConfig.ownerRoleIds, ...guildConfig.developerRoleIds].some(roleId => interaction.member.roles.cache.has(roleId)) || interaction.member.permissions.has(PermissionFlagsBits.Administrator);
 
     if (customId === 'ticket_btn_claim') {
         if (!isStaff) return interaction.reply({ content: 'Only staff members can claim tickets.', ephemeral: true });
@@ -215,8 +218,9 @@ async function handleButton(interaction, client) {
 }
 
 async function logTicketAction(client, guild, title, description, color, attachment = null) {
-    if (!config.logChannelId) return;
-    const logChannel = guild.channels.cache.get(config.logChannelId);
+    const guildConfig = await db.getGuildConfig(guild.id);
+    if (!guildConfig.logChannelId) return;
+    const logChannel = guild.channels.cache.get(guildConfig.logChannelId);
     if (!logChannel) return;
 
     const embed = new EmbedBuilder()
