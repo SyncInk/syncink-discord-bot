@@ -38,6 +38,8 @@ async function initDatabase() {
                 guildId TEXT PRIMARY KEY,
                 ticketCategoryId TEXT,
                 logChannelId TEXT,
+                messageLogChannelId TEXT,
+                voiceLogChannelId TEXT,
                 staffRoleIds TEXT,
                 adminRoleIds TEXT,
                 ownerRoleIds TEXT,
@@ -105,12 +107,14 @@ async function getGuildConfig(guildId) {
         let row = await sqliteDb.get('SELECT * FROM guild_settings WHERE guildId = ?', [guildId]);
         if (!row) {
             await sqliteDb.run('INSERT INTO guild_settings (guildId) VALUES (?)', [guildId]);
-            row = { guildId, ticketCategoryId: null, logChannelId: null, staffRoleIds: null, adminRoleIds: null, ownerRoleIds: null, developerRoleIds: null };
+            row = { guildId, ticketCategoryId: null, logChannelId: null, messageLogChannelId: null, voiceLogChannelId: null, staffRoleIds: null, adminRoleIds: null, ownerRoleIds: null, developerRoleIds: null };
         }
         return {
             guildId: row.guildId,
             ticketCategoryId: row.ticketCategoryId,
             logChannelId: row.logChannelId,
+            messageLogChannelId: row.messageLogChannelId,
+            voiceLogChannelId: row.voiceLogChannelId,
             staffRoleIds: row.staffRoleIds ? JSON.parse(row.staffRoleIds) : [],
             adminRoleIds: row.adminRoleIds ? JSON.parse(row.adminRoleIds) : [],
             ownerRoleIds: row.ownerRoleIds ? JSON.parse(row.ownerRoleIds) : [],
@@ -169,6 +173,8 @@ function getGuildSettingsModel() {
             guildId: { type: String, required: true, unique: true },
             ticketCategoryId: { type: String, default: null },
             logChannelId: { type: String, default: null },
+            messageLogChannelId: { type: String, default: null },
+            voiceLogChannelId: { type: String, default: null },
             staffRoleIds: { type: [String], default: [] },
             adminRoleIds: { type: [String], default: [] },
             ownerRoleIds: { type: [String], default: [] },

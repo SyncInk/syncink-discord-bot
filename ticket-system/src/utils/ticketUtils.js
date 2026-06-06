@@ -17,18 +17,11 @@ async function handleSelectMenu(interaction, client) {
         const reasonInput = new TextInputBuilder()
             .setCustomId('ticket_reason')
             .setLabel("Reason for opening ticket")
-            .setStyle(TextInputStyle.Short)
+            .setStyle(TextInputStyle.Paragraph)
             .setRequired(true);
 
-        const detailsInput = new TextInputBuilder()
-            .setCustomId('ticket_details')
-            .setLabel("Additional Details")
-            .setStyle(TextInputStyle.Paragraph)
-            .setRequired(false);
-
         modal.addComponents(
-            new ActionRowBuilder().addComponents(reasonInput),
-            new ActionRowBuilder().addComponents(detailsInput)
+            new ActionRowBuilder().addComponents(reasonInput)
         );
 
         await interaction.showModal(modal);
@@ -42,56 +35,34 @@ async function handleModalSubmit(interaction, client) {
         const typeValue = interaction.customId.replace('ticket_modal_', '');
         const optionData = config.ticketOptions.find(o => o.value === typeValue);
         const reason = interaction.fields.getTextInputValue('ticket_reason');
-        const details = interaction.fields.getTextInputValue('ticket_details') || 'No additional details provided.';
         
         const guild = interaction.guild;
         const guildConfig = await db.getGuildConfig(guild.id);
-        const categoryId = guildConfig.ticketCategoryId;
-        const category = guild.channels.cache.get(categoryId);
-
-        // Permissions array
-        const permissionOverwrites = [
-            {
-                id: guild.id,
-                deny: [PermissionFlagsBits.ViewChannel],
-            },
-            {
-                id: interaction.user.id,
-                allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory],
-            }
-        ];
-
-        // Add staff roles permissions
-        const staffRoles = [...guildConfig.staffRoleIds, ...guildConfig.adminRoleIds, ...guildConfig.ownerRoleIds, ...guildConfig.developerRoleIds];
-        for (const roleId of staffRoles) {
-            if (roleId && guild.roles.cache.has(roleId)) {
-                permissionOverwrites.push({
-                    id: roleId,
-                    allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory],
-                });
-            }
-        }
 
         let prefix = 'ticket';
         if (typeValue === 'bug_report') prefix = 'bug';
         else if (typeValue === 'user_report') prefix = 'report';
         else if (typeValue === 'general_request') prefix = 'help';
 
-        const channelName = `${prefix}-${interaction.user.username}`;
+        const threadName = `${prefix}-${interaction.user.username}`;
 
         try {
-            const channel = await guild.channels.create({
-                name: channelName,
-                type: ChannelType.GuildText,
-                parent: category || null,
-                permissionOverwrites
+            // Create private thread from the panel channel
+            const thread = await interaction.channel.threads.create({
+                name: threadName,
+                autoArchiveDuration: 1440,
+                type: ChannelType.PrivateThread,
+                reason: 'Ticket thread'
             });
+
+            // Add the user to the private thread
+            await thread.members.add(interaction.user.id);
 
             const ticketId = Math.floor(Math.random() * 100000).toString();
 
-            // Store in DB
+            // Store in DB using thread ID
             await db.createTicket({
-                channelId: channel.id,
+                channelId: thread.id,
                 ticketId,
                 creatorId: interaction.user.id,
                 type: typeValue,
@@ -101,50 +72,49 @@ async function handleModalSubmit(interaction, client) {
                 closedAt: null
             });
 
-            // Create thread
-            const threadName = `${prefix} discussion`;
-            const thread = await channel.threads.create({
-                name: threadName,
-                autoArchiveDuration: 1440,
-                type: ChannelType.PrivateThread,
-                reason: 'Ticket discussion thread'
-            });
+            // Formatting exactly like screenshots
+            const staffPing = guildConfig.developerRoleIds && guildConfig.developerRoleIds.length > 0 
+                ? `<@&${guildConfig.developerRoleIds[0]}>` 
+                : (guildConfig.staffRoleIds && guildConfig.staffRoleIds.length > 0 ? `<@&${guildConfig.staffRoleIds[0]}>` : '@Staff');
 
-            // Welcome message embed
-            const welcomeEmbed = new EmbedBuilder()
-                .setTitle(`Ticket: ${optionData.label}`)
-                .setColor(config.colors.primary)
-                .setDescription(`Thank you for reaching out, <@${interaction.user.id}>!\nSupport staff will be with you shortly.\n\n**Reason:** ${reason}\n**Details:** ${details}`)
-                .addFields(
-                    { name: 'Claimed By', value: 'No one has claimed this ticket yet.' }
-                )
-                .setTimestamp();
+            const contentText = `Thank you for your patience <@${interaction.user.id}>\n${staffPing} will be with you shortly.`;
 
-            const closeBtn = new ButtonBuilder().setCustomId('ticket_btn_close').setLabel('🔒 Close').setStyle(ButtonStyle.Danger);
-            const claimBtn = new ButtonBuilder().setCustomId('ticket_btn_claim').setLabel('📝 Claim').setStyle(ButtonStyle.Success);
-            const transferBtn = new ButtonBuilder().setCustomId('ticket_btn_transfer').setLabel('🔁 Transfer').setStyle(ButtonStyle.Secondary);
+            const claimersEmbed = new EmbedBuilder()
+                .setTitle('Claimers')
+                .setDescription('• 🦅 No one has claimed this ticket yet.')
+                .setColor('#9b59b6') // Purple
+                .setThumbnail('https://i.imgur.com/vH1l5s4.png'); // Placeholder purple shield
 
-            const row = new ActionRowBuilder().addComponents(closeBtn, claimBtn, transferBtn);
+            const reasonEmbed = new EmbedBuilder()
+                .setTitle('Reason')
+                .setDescription(reason)
+                .setColor('#ff5555'); // Pink/Red
 
-            await channel.send({ content: `<@${interaction.user.id}>`, embeds: [welcomeEmbed], components: [row] });
+            const closeBtn = new ButtonBuilder().setCustomId('ticket_btn_close').setLabel('Close').setStyle(ButtonStyle.Danger).setEmoji('🔒');
+            const transferBtn = new ButtonBuilder().setCustomId('ticket_btn_transfer').setLabel('Transfer').setStyle(ButtonStyle.Secondary).setEmoji('🔁');
+            const claimBtn = new ButtonBuilder().setCustomId('ticket_btn_claim').setLabel('Claim').setStyle(ButtonStyle.Success).setEmoji('📝');
+
+            const row = new ActionRowBuilder().addComponents(closeBtn, transferBtn, claimBtn);
+
+            await thread.send({ content: contentText, embeds: [claimersEmbed, reasonEmbed], components: [row] });
             
-            await logTicketAction(client, guild, 'Ticket Created', `User: <@${interaction.user.id}>\nChannel: <#${channel.id}>\nType: ${optionData.label}`, config.colors.success);
+            await logTicketAction(client, guild, 'Ticket Created', `User: <@${interaction.user.id}>\nThread: <#${thread.id}>\nType: ${optionData.label}`, config.colors.success);
 
-            await interaction.editReply(`Your ticket has been created: <#${channel.id}>`);
+            await interaction.editReply(`Your ticket has been created: <#${thread.id}>`);
         } catch (error) {
             console.error('[TICKET CREATE ERROR]', error);
-            await interaction.editReply('Failed to create ticket. Please check permissions and configuration.');
+            await interaction.editReply('Failed to create ticket thread. Please check permissions and ensure the server has Private Threads enabled.');
         }
     }
 }
 
 async function handleButton(interaction, client) {
-    const { customId, channel, user, guild } = interaction;
-    const ticket = await db.getTicket(channel.id);
+    const { customId, channel: thread, user, guild } = interaction;
+    const ticket = await db.getTicket(thread.id);
 
     if (!ticket) {
         if (customId.startsWith('ticket_btn_')) {
-            return interaction.reply({ content: 'This channel is not registered as a ticket in the database.', ephemeral: true });
+            return interaction.reply({ content: 'This thread is not registered as a ticket in the database.', ephemeral: true });
         }
         return;
     }
@@ -158,39 +128,33 @@ async function handleButton(interaction, client) {
         if (!isStaff) return interaction.reply({ content: 'Only staff members can claim tickets.', ephemeral: true });
         if (ticket.claimerId) return interaction.reply({ content: `This ticket is already claimed by <@${ticket.claimerId}>.`, ephemeral: true });
 
-        await db.updateTicket(channel.id, { claimerId: user.id });
+        await db.updateTicket(thread.id, { claimerId: user.id });
 
-        const embed = interaction.message.embeds[0];
-        const newEmbed = EmbedBuilder.from(embed);
-        
-        newEmbed.data.fields[0] = { name: 'Claimed By', value: `<@${user.id}>` };
+        const claimersEmbed = EmbedBuilder.from(interaction.message.embeds[0]);
+        claimersEmbed.setDescription(`• 🦅 <@${user.id}>`);
 
-        await interaction.update({ embeds: [newEmbed] });
+        await interaction.update({ embeds: [claimersEmbed, interaction.message.embeds[1]] });
 
-        const claimEmbed = new EmbedBuilder()
-            .setColor(config.colors.success)
-            .setDescription(`Thank you for your patience <@${ticket.creatorId}>\n<@${user.id}> will be with you shortly.`);
-        
-        await channel.send({ embeds: [claimEmbed] });
-        await logTicketAction(client, guild, 'Ticket Claimed', `Channel: <#${channel.id}>\nClaimed By: <@${user.id}>`, config.colors.primary);
+        await thread.send({ content: `🦅 <@${user.id}> is a claimer now!` });
+        await logTicketAction(client, guild, 'Ticket Claimed', `Thread: <#${thread.id}>\nClaimed By: <@${user.id}>`, config.colors.primary);
 
     } else if (customId === 'ticket_btn_close') {
         if (!isStaff && user.id !== ticket.creatorId) return interaction.reply({ content: 'You do not have permission to close this ticket.', ephemeral: true });
 
-        await interaction.reply({ content: 'Closing ticket in 5 seconds...' });
+        await interaction.reply({ content: 'Closing ticket and generating transcript in 5 seconds...' });
 
         // Generate transcript
-        const transcript = await discordTranscripts.createTranscript(channel, {
+        const transcript = await discordTranscripts.createTranscript(thread, {
             limit: -1,
             returnType: 'attachment',
-            fileName: `${channel.name}-transcript.html`,
+            fileName: `${thread.name}-transcript.html`,
             saveImages: true,
             poweredBy: false
         });
 
-        await db.updateTicket(channel.id, { status: 'closed', closedAt: Date.now() });
+        await db.updateTicket(thread.id, { status: 'closed', closedAt: Date.now() });
 
-        await logTicketAction(client, guild, 'Ticket Closed', `Channel: ${channel.name}\nClosed By: <@${user.id}>\nCreator: <@${ticket.creatorId}>`, config.colors.error, transcript);
+        await logTicketAction(client, guild, 'Ticket Closed', `Thread: ${thread.name}\nClosed By: <@${user.id}>\nCreator: <@${ticket.creatorId}>`, config.colors.error, transcript);
 
         // Try to DM the user
         try {
@@ -198,7 +162,7 @@ async function handleButton(interaction, client) {
             if (creator) {
                 const dmEmbed = new EmbedBuilder()
                     .setTitle('Ticket Closed')
-                    .setDescription(`Your ticket **${channel.name}** in **${guild.name}** has been closed.\nAttached is your transcript.`)
+                    .setDescription(`Your ticket **${thread.name}** in **${guild.name}** has been closed.\nAttached is your transcript.`)
                     .setColor(config.colors.primary);
                 await creator.send({ embeds: [dmEmbed], files: [transcript] });
             }
@@ -207,13 +171,12 @@ async function handleButton(interaction, client) {
         }
 
         setTimeout(() => {
-            channel.delete().catch(() => {});
+            thread.delete().catch(() => {});
         }, 5000);
 
     } else if (customId === 'ticket_btn_transfer') {
         if (!isStaff) return interaction.reply({ content: 'Only staff can transfer tickets.', ephemeral: true });
-        // Can implement a select menu to choose a role/user to transfer to
-        await interaction.reply({ content: 'Transfer feature is currently limited. Mention another staff member to assist.', ephemeral: true });
+        await interaction.reply({ content: 'Transfer feature is currently limited. Mention another staff member in the thread to assist.', ephemeral: true });
     }
 }
 
