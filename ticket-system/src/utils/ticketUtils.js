@@ -1,5 +1,5 @@
 const { ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder, ChannelType, PermissionFlagsBits, EmbedBuilder, ButtonBuilder, ButtonStyle, ComponentType } = require('discord.js');
-const discordTranscripts = require('discord-html-transcripts');
+const { AttachmentBuilder } = require('discord.js');
 const config = require('../../config');
 const db = require('./database');
 
@@ -143,32 +143,14 @@ async function handleButton(interaction, client) {
 
         await interaction.reply({ content: 'Closing ticket and generating transcript in 5 seconds...' });
 
-        // Generate transcript
-        const transcript = await discordTranscripts.createTranscript(thread, {
-            limit: -1,
-            returnType: 'attachment',
-            fileName: `${thread.name}-transcript.html`,
-            saveImages: true,
-            poweredBy: false
-        });
+        // Generate simple text transcript for native Discord readability
+        const messages = await thread.messages.fetch({ limit: 100 });
+        const transcriptData = messages.reverse().map(m => `[${new Date(m.createdTimestamp).toLocaleString()}] ${m.author.tag}: ${m.content}`).join('\n');
+        const transcript = new AttachmentBuilder(Buffer.from(transcriptData, 'utf-8'), { name: `${thread.name}-transcript.txt` });
 
         await db.updateTicket(thread.id, { status: 'closed', closedAt: Date.now() });
 
         await logTicketAction(client, guild, 'Ticket Closed', `Thread: ${thread.name}\nClosed By: <@${user.id}>\nCreator: <@${ticket.creatorId}>`, config.colors.error, transcript);
-
-        // Try to DM the user
-        try {
-            const creator = await client.users.fetch(ticket.creatorId);
-            if (creator) {
-                const dmEmbed = new EmbedBuilder()
-                    .setTitle('Ticket Closed')
-                    .setDescription(`Your ticket **${thread.name}** in **${guild.name}** has been closed.\nAttached is your transcript.`)
-                    .setColor(config.colors.primary);
-                await creator.send({ embeds: [dmEmbed], files: [transcript] });
-            }
-        } catch (e) {
-            console.log('Could not DM user transcript.');
-        }
 
         setTimeout(() => {
             thread.delete().catch(() => {});
