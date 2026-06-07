@@ -1,4 +1,4 @@
-﻿import discord
+import discord
 from discord.ext import commands, tasks
 import asyncio
 import os
@@ -15,7 +15,7 @@ bot = commands.Bot(command_prefix="?", intents=intents, help_command=None)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(BASE_DIR, "bot_data.db")
 WEEKLY_RESET_HOURS = 168
-SETTINGS_COLUMNS = {"welcome_channel", "log_channel", "autorole", "level_channel"}
+SETTINGS_COLUMNS = {"welcome_channel", "log_channel", "msg_log_channel", "voice_log_channel", "autorole", "level_channel"}
 VAULT_CAP = 3000
 COOKIE_EMOJI = "🍪"
 
@@ -51,6 +51,7 @@ def init_db():
     c.execute("""CREATE TABLE IF NOT EXISTS guild_settings (
         guild_id TEXT PRIMARY KEY,
         welcome_channel TEXT, log_channel TEXT,
+        msg_log_channel TEXT, voice_log_channel TEXT,
         autorole TEXT, level_channel TEXT
     )""")
     c.execute("""CREATE TABLE IF NOT EXISTS vc_sessions (
@@ -510,7 +511,7 @@ async def on_message(message):
 @bot.event
 async def on_message_delete(message):
     if message.author.bot: return
-    ch_id = get_setting(message.guild.id, "log_channel")
+    ch_id = get_setting(message.guild.id, "msg_log_channel") or get_setting(message.guild.id, "log_channel")
     if ch_id:
         ch = message.guild.get_channel(int(ch_id))
         if ch:
@@ -523,7 +524,7 @@ async def on_message_delete(message):
 @bot.event
 async def on_message_edit(before, after):
     if before.author.bot or not before.guild: return
-    ch_id = get_setting(before.guild.id, "log_channel")
+    ch_id = get_setting(before.guild.id, "msg_log_channel") or get_setting(before.guild.id, "log_channel")
     if ch_id and before.content != after.content:
         ch = before.guild.get_channel(int(ch_id))
         if ch:
@@ -532,6 +533,7 @@ async def on_message_edit(before, after):
             e.add_field(name="Channel", value=before.channel.mention)
             e.add_field(name="Before", value=before.content[:512] or "*empty*", inline=False)
             e.add_field(name="After", value=after.content[:512] or "*empty*", inline=False)
+            e.add_field(name="Link", value=f"[Jump to Message]({after.jump_url})", inline=False)
             await ch.send(embed=e)
 
 @bot.event
@@ -563,6 +565,12 @@ async def on_voice_state_update(member, before, after):
     c = conn.cursor()
     now = time.time()
     if before.channel is None and after.channel is not None:
+        ch_id = get_setting(member.guild.id, "voice_log_channel") or get_setting(member.guild.id, "log_channel")
+        if ch_id:
+            ch = member.guild.get_channel(int(ch_id))
+            if ch:
+                e = discord.Embed(title="Voice Join", description=f"{member.mention} joined **{after.channel.name}**", color=0x2ECC71, timestamp=datetime.utcnow())
+                await ch.send(embed=e)
         c.execute(
             "INSERT OR REPLACE INTO vc_sessions (guild_id, user_id, join_time, last_reward_at) VALUES (?,?,?,?)",
             (guild_id, user_id, now, now),
@@ -570,6 +578,12 @@ async def on_voice_state_update(member, before, after):
         conn.commit()
         conn.close()
     elif before.channel is not None and after.channel is None:
+        ch_id = get_setting(member.guild.id, "voice_log_channel") or get_setting(member.guild.id, "log_channel")
+        if ch_id:
+            ch = member.guild.get_channel(int(ch_id))
+            if ch:
+                e = discord.Embed(title="Voice Leave", description=f"{member.mention} left **{before.channel.name}**", color=0xE74C3C, timestamp=datetime.utcnow())
+                await ch.send(embed=e)
         c.execute("SELECT join_time, last_reward_at FROM vc_sessions WHERE guild_id=? AND user_id=?", (guild_id, user_id))
         row = c.fetchone()
         if row:
@@ -595,6 +609,15 @@ async def on_voice_state_update(member, before, after):
         else:
             conn.commit()
             conn.close()
+    elif before.channel != after.channel:
+        ch_id = get_setting(member.guild.id, "voice_log_channel") or get_setting(member.guild.id, "log_channel")
+        if ch_id:
+            ch = member.guild.get_channel(int(ch_id))
+            if ch:
+                e = discord.Embed(title="Voice Move", description=f"{member.mention} moved from **{before.channel.name}** to **{after.channel.name}**", color=0x3498DB, timestamp=datetime.utcnow())
+                await ch.send(embed=e)
+        conn.commit()
+        conn.close()
     else:
         conn.commit()
         conn.close()
@@ -746,7 +769,9 @@ async def help(ctx, category: str = None):
     elif cat == "settings":
         embed = discord.Embed(title="Settings Commands", color=0x95A5A6)
         embed.add_field(name="?setwelcome #channel", value="Set welcome channel", inline=False)
-        embed.add_field(name="?setlog #channel", value="Set log channel", inline=False)
+        embed.add_field(name="?setlog #channel", value="Set general log channel", inline=False)
+        embed.add_field(name="?setmsglog #channel", value="Set message log channel", inline=False)
+        embed.add_field(name="?setvoicelog #channel", value="Set voice log channel", inline=False)
         embed.add_field(name="?setauthorole @role", value="Set auto-role", inline=False)
         embed.add_field(name="?setlevelchannel #channel", value="Set level-up channel", inline=False)
     else:
@@ -2068,7 +2093,29 @@ async def setauthorole(ctx, role: discord.Role):
 @commands.has_permissions(administrator=True)
 async def setlevelchannel(ctx, channel: discord.TextChannel):
     set_setting(ctx.guild.id, "level_channel", str(channel.id))
-    await send_reply(ctx, embed=discord.Embed(description=f"Level-up announcements set to {channel.mention}.", color=0x2ECC71))
+    await send_reply(ctx, f"✅ Level-up channel set to {channel.mention}")
+
+@bot.command()
+@commands.has_permissions(administrator=True)
+async def setmsglog(ctx, channel: discord.TextChannel):
+    set_setting(ctx.guild.id, "msg_log_channel", str(channel.id))
+    await send_reply(ctx, f"✅ Message log channel set to {channel.mention}")
+
+@bot.command()
+@commands.has_permissions(administrator=True)
+async def setvoicelog(ctx, channel: discord.TextChannel):
+    set_setting(ctx.guild.id, "voice_log_channel", str(channel.id))
+    await send_reply(ctx, f"✅ Voice log channel set to {channel.mention}")
+
+@bot.command()
+@commands.has_permissions(administrator=True)
+async def clearslash(ctx):
+    try:
+        bot.tree.clear_commands(guild=None)
+        await bot.tree.sync()
+        await send_reply(ctx, "✅ All ghost global slash commands have been successfully permanently deleted from Discord's servers!")
+    except Exception as e:
+        await send_reply(ctx, f"❌ Failed to clear slash commands: {e}")
 
 # ERROR HANDLER
 @bot.event
