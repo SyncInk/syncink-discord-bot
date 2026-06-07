@@ -2113,7 +2113,9 @@ async def clearslash(ctx):
     try:
         bot.tree.clear_commands(guild=None)
         await bot.tree.sync()
-        await send_reply(ctx, "✅ All ghost global slash commands have been successfully permanently deleted from Discord's servers!")
+        bot.tree.clear_commands(guild=ctx.guild)
+        await bot.tree.sync(guild=ctx.guild)
+        await send_reply(ctx, "✅ All ghost global and guild slash commands have been successfully permanently deleted from Discord's servers!")
     except Exception as e:
         await send_reply(ctx, f"❌ Failed to clear slash commands: {e}")
 
