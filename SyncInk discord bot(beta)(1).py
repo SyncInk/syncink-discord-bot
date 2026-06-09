@@ -500,7 +500,6 @@ class WelcomeView(discord.ui.View):
                         f"• ✨ Feel free to # 💰 | support-us",
             color=0x2b2d31
         )
-        embed.set_thumbnail(url="https://i.imgur.com/P1P1zUo.jpg")
         await interaction.response.send_message(
             content=f"{interaction.user.mention} **Welcomed** {target_mention}",
             embed=embed
@@ -859,7 +858,6 @@ async def bal(ctx, member: discord.Member = None):
     embed.description = f"**Total ➔** `{total:,}` 🍪\n\n"
     embed.add_field(name="🫙 Jar", value=f"`{jar:,}` 🍪", inline=True)
     embed.add_field(name="🏦 Vault", value=f"`{vault:,}/{vault_max:,}` 🍪", inline=True)
-    embed.set_thumbnail(url="https://i.imgur.com/0P6UOfC.png")
     await send_reply(ctx, embed=embed)
 
 @bot.command()
@@ -909,7 +907,6 @@ async def daily(ctx):
     embed.set_author(name="Daily Reward", icon_url=ctx.author.display_avatar.url)
     embed.add_field(name="🍪 Cookies", value=f"`+{reward:,} 🍪`", inline=True)
     embed.add_field(name="🧪 XP", value=f"`+{xp_reward:,}`", inline=True)
-    embed.set_thumbnail(url="https://i.imgur.com/P4wP7Q0.png")
     await send_reply(ctx, embed=embed)
 
 @bot.command()
@@ -940,7 +937,6 @@ async def work(ctx):
     embed.set_author(name="Work Reward", icon_url=ctx.author.display_avatar.url)
     embed.add_field(name="🍪 Cookies", value=f"`+{reward:,} 🍪`", inline=True)
     embed.add_field(name="🧪 XP", value=f"`+{xp_reward:,}`", inline=True)
-    embed.set_thumbnail(url="https://i.imgur.com/P4wP7Q0.png")
     await send_reply(ctx, embed=embed)
 
 @bot.command()
@@ -1046,7 +1042,6 @@ async def rob(ctx, *, target_input: str = None):
         embed.add_field(name=f"👤 {target.display_name}", value=f"`{victim[3]:,} 🍪`", inline=True)
         embed.color = 0xE74C3C
 
-    embed.set_thumbnail(url="https://i.imgur.com/G538D6r.png")
     await send_reply(ctx, embed=embed)
 
 # Active heist sessions
@@ -1211,7 +1206,6 @@ async def lvl(ctx, member: discord.Member = None):
     embed.description = f"🎖️ **LEVEL ➔** `{level}`\n\n"
     embed.add_field(name="🧪 XP", value=f"`{xp:,} / {needed:,}`", inline=True)
     embed.add_field(name="Prestige", value=f"`0 / 10`", inline=True)
-    embed.set_thumbnail(url="https://i.imgur.com/D2e9x3S.png")
     
     view = discord.ui.View()
     btn = discord.ui.Button(label="Leaderboard", emoji="🏆", style=discord.ButtonStyle.secondary)
@@ -1260,7 +1254,6 @@ async def lb(ctx):
     rows = c.fetchall()
     conn.close()
     embed = discord.Embed(title="🍪 __Cookies Leaderboard__", color=0x2b2d31)
-    embed.set_thumbnail(url="https://i.imgur.com/WbZq1kL.png")
     medals = ["🥇", "🥈", "🥉"]
     rank = 0
     desc = ""
