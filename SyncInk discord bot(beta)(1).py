@@ -13,7 +13,7 @@ from aiohttp import web
 intents = discord.Intents.default()
 intents.message_content = True
 intents.members = True
-bot = commands.Bot(command_prefix="?", intents=intents, help_command=None)
+bot = commands.Bot(command_prefix="?", intents=intents, help_command=None, case_insensitive=True)
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(BASE_DIR, "bot_data.db")
@@ -486,8 +486,29 @@ async def start_server():
     await site.start()
     print(f"Web server started on port {port}")
 
+class WelcomeView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    @discord.ui.button(label="Say welcome!", emoji="🫂", style=discord.ButtonStyle.secondary, custom_id="say_welcome_btn")
+    async def say_welcome(self, interaction: discord.Interaction, button: discord.ui.Button):
+        target = interaction.message.mentions[0] if interaction.message.mentions else None
+        target_mention = target.mention if target else "the new member"
+        embed = discord.Embed(
+            description=f"🫂 Welcome, Thanks for being a proud member of our unique and ever-expanding community.\n\n"
+                        f"• 💚 You can # 📡 | vote-for-us\n\n"
+                        f"• ✨ Feel free to # 💰 | support-us",
+            color=0x2b2d31
+        )
+        embed.set_thumbnail(url="https://i.imgur.com/P1P1zUo.jpg")
+        await interaction.response.send_message(
+            content=f"{interaction.user.mention} **Welcomed** {target_mention}",
+            embed=embed
+        )
+
 async def setup_hook():
     bot.loop.create_task(start_server())
+    bot.add_view(WelcomeView())
 
 bot.setup_hook = setup_hook
 
@@ -511,10 +532,17 @@ async def on_member_join(member):
     if ch_id:
         channel = guild.get_channel(int(ch_id))
         if channel:
-            embed = discord.Embed(title=f"Welcome to {guild.name}!", color=0x2ECC71)
-            embed.description = f"Hey {member.mention}! You are member **#{guild.member_count}**."
+            embed = discord.Embed(color=0x2b2d31)
+            embed.description = (
+                f"- ✨ **Learn more** 🛫 Server Guide\n\n"
+                f"- 💖 **Get roles** 🎚️ Channels & Roles\n\n"
+                f"- 💮 **Discover more** 🔍 Browse Channels\n"
+                f"─────────────────────────────\n"
+                f"🌎 You are our {guild.member_count}th member, Have a great day!"
+            )
             embed.set_thumbnail(url=member.display_avatar.url)
-            await channel.send(embed=embed)
+            content = f"➡️ {member.mention}, **Welcome to {guild.name}!**"
+            await channel.send(content=content, embed=embed, view=WelcomeView())
     role_id = get_setting(guild.id, "autorole")
     if role_id:
         role = guild.get_role(int(role_id))
@@ -826,12 +854,12 @@ async def bal(ctx, member: discord.Member = None):
     row = get_user(ctx.guild.id, member.id)
     jar, vault, vault_max = row[3], row[4], row[5]
     total = jar + vault
-    embed = discord.Embed(title=f"{member.display_name}'s Account", color=0xF39C12)
-    embed.set_thumbnail(url=member.display_avatar.url)
-    embed.add_field(name="Total", value=f"**{total:,}** {COOKIE_EMOJI}", inline=False)
-    embed.add_field(name="Jar (robable)", value=f"{jar:,} {COOKIE_EMOJI}", inline=True)
-    embed.add_field(name="Vault (safe)", value=f"{vault:,}/{vault_max:,} {COOKIE_EMOJI}", inline=True)
-    embed.set_footer(text=f"Level {row[7]} | {row[9]:,} total messages")
+    embed = discord.Embed(color=0x2b2d31)
+    embed.set_author(name=f"{member.display_name}'s Account", icon_url=member.display_avatar.url)
+    embed.description = f"**Total ➔** `{total:,}` 🍪\n\n"
+    embed.add_field(name="🫙 Jar", value=f"`{jar:,}` 🍪", inline=True)
+    embed.add_field(name="🏦 Vault", value=f"`{vault:,}/{vault_max:,}` 🍪", inline=True)
+    embed.set_thumbnail(url="https://i.imgur.com/0P6UOfC.png")
     await send_reply(ctx, embed=embed)
 
 @bot.command()
@@ -874,11 +902,14 @@ async def daily(ctx):
     cd = cd_remaining(row[11], 24)
     if cd:
         return await send_reply(ctx, embed=discord.Embed(description=f"⏰ Daily resets in **{cd}**", color=0xE74C3C))
-    reward = random.randint(100, 300)
-    update_user(ctx.guild.id, ctx.author.id, jar=row[3] + reward, last_daily=datetime.utcnow().isoformat())
-    embed = discord.Embed(title="Daily Reward!", color=0x2ECC71)
-    embed.add_field(name="Reward", value=f"+**{reward:,}** {COOKIE_EMOJI} added to jar!")
-    embed.set_footer(text="Come back in 24 hours!")
+    reward = random.randint(500, 1000)
+    xp_reward = random.randint(800, 1500)
+    update_user(ctx.guild.id, ctx.author.id, jar=row[3] + reward, xp=row[6] + xp_reward, last_daily=datetime.utcnow().isoformat())
+    embed = discord.Embed(color=0x2b2d31)
+    embed.set_author(name="Daily Reward", icon_url=ctx.author.display_avatar.url)
+    embed.add_field(name="🍪 Cookies", value=f"`+{reward:,} 🍪`", inline=True)
+    embed.add_field(name="🧪 XP", value=f"`+{xp_reward:,}`", inline=True)
+    embed.set_thumbnail(url="https://i.imgur.com/P4wP7Q0.png")
     await send_reply(ctx, embed=embed)
 
 @bot.command()
@@ -901,24 +932,15 @@ async def work(ctx):
     if cd:
         return await send_reply(ctx, embed=discord.Embed(description=f"⏰ Work cooldown: **{cd}**", color=0xE74C3C))
 
-    jobs = [
-        ("delivered pizza", random.randint(50, 150)),
-        ("fixed a bug", random.randint(80, 200)),
-        ("drew a painting", random.randint(60, 180)),
-        ("drove a taxi", random.randint(40, 120)),
-        ("built a house", random.randint(100, 250)),
-        ("packed boxes", random.randint(50, 130)),
-        ("watered plants", random.randint(30, 90)),
-        ("busked on the street", random.randint(60, 160)),
-        ("cleaned a mansion", random.randint(80, 170)),
-        ("walked dogs", random.randint(40, 110)),
-        ("took photos", random.randint(70, 190)),
-        ("cooked meals", random.randint(60, 140)),
-    ]
-    job, reward = random.choice(jobs)
-    update_user(ctx.guild.id, ctx.author.id, jar=row[3] + reward, last_work=datetime.utcnow().isoformat())
-    embed = discord.Embed(description=f"You {job} and earned **{reward:,}** {COOKIE_EMOJI}", color=0x2ECC71)
-    embed.set_footer(text="Work again in 1 hour")
+    reward = random.randint(40, 100)
+    xp_reward = random.randint(50, 150)
+    update_user(ctx.guild.id, ctx.author.id, jar=row[3] + reward, xp=row[6] + xp_reward, last_work=datetime.utcnow().isoformat())
+    
+    embed = discord.Embed(color=0x2b2d31)
+    embed.set_author(name="Work Reward", icon_url=ctx.author.display_avatar.url)
+    embed.add_field(name="🍪 Cookies", value=f"`+{reward:,} 🍪`", inline=True)
+    embed.add_field(name="🧪 XP", value=f"`+{xp_reward:,}`", inline=True)
+    embed.set_thumbnail(url="https://i.imgur.com/P4wP7Q0.png")
     await send_reply(ctx, embed=embed)
 
 @bot.command()
@@ -1006,24 +1028,25 @@ async def rob(ctx, *, target_input: str = None):
 
     update_user(ctx.guild.id, ctx.author.id, last_rob=datetime.utcnow().isoformat())
 
+    embed = discord.Embed(color=0x2b2d31)
     if random.random() < 0.45:
         percent = random.randint(3, 15)
         amount = max(10, int(victim[3] * percent / 100))
         update_user(ctx.guild.id, ctx.author.id, jar=row[3] + amount)
         update_user(ctx.guild.id, target.id, jar=victim[3] - amount)
-        embed = discord.Embed(title="🦹 Rob Successful", color=0x2ECC71)
-        embed.add_field(name=f"Swiped {percent}% of their jar", value=f"+{amount:,} {COOKIE_EMOJI}", inline=False)
-        embed.add_field(name=ctx.author.display_name, value=f"{row[3]+amount:,} {COOKIE_EMOJI}", inline=True)
-        embed.add_field(name=target.display_name, value=f"{victim[3]-amount:,} {COOKIE_EMOJI}", inline=True)
+        embed.description = f"✅ **Robbed `{percent}%` of cookies**\n\n`+{amount:,} 🍪`\n"
+        embed.add_field(name=f"👤 {ctx.author.display_name}", value=f"`{row[3]+amount:,} 🍪`", inline=True)
+        embed.add_field(name=f"👤 {target.display_name}", value=f"`{victim[3]-amount:,} 🍪`", inline=True)
+        embed.color = 0x2ECC71
     else:
         penalty = min(random.randint(10, 150), max(10, row[3]))
         update_user(ctx.guild.id, ctx.author.id, jar=max(0, row[3] - penalty))
-        embed = discord.Embed(title="🚨 Caught by Police", color=0xE74C3C)
-        embed.add_field(name="Fine Paid", value=f"-{penalty:,} {COOKIE_EMOJI}", inline=False)
-        embed.add_field(name=ctx.author.display_name, value=f"{max(0,row[3]-penalty):,} {COOKIE_EMOJI}", inline=True)
-        embed.add_field(name=target.display_name, value=f"{victim[3]:,} {COOKIE_EMOJI}", inline=True)
+        embed.description = f"❌ **Caught by Police! Paid Fine**\n\n`-{penalty:,} 🍪`\n"
+        embed.add_field(name=f"👤 {ctx.author.display_name}", value=f"`{max(0,row[3]-penalty):,} 🍪`", inline=True)
+        embed.add_field(name=f"👤 {target.display_name}", value=f"`{victim[3]:,} 🍪`", inline=True)
+        embed.color = 0xE74C3C
 
-    embed.set_footer(text=f"Next rob cooldown: {cooldown_mins}min | Weekly msgs: {weekly_msgs}")
+    embed.set_thumbnail(url="https://i.imgur.com/G538D6r.png")
     await send_reply(ctx, embed=embed)
 
 # Active heist sessions
@@ -1183,19 +1206,24 @@ async def lvl(ctx, member: discord.Member = None):
             next_level_role = (lvl_threshold, role_name)
             break
 
-    embed = discord.Embed(title=f"{member.display_name}'s Profile", color=0x9B59B6)
-    embed.set_thumbnail(url=member.display_avatar.url)
-    embed.add_field(name="Rank", value=f"**#{rank_pos}**", inline=True)
-    embed.add_field(name="⭐ Level", value=f"**{level}**", inline=True)
-    embed.add_field(name="XP", value=f"**{xp:,} / {needed:,}**", inline=True)
-    embed.add_field(name="Progress", value=f"`{bar}` {percent}%", inline=False)
-    embed.add_field(name="Cookies", value=f"**{row[3]+row[4]:,}** {COOKIE_EMOJI}", inline=True)
-    embed.add_field(name="Messages", value=f"**{row[9]:,}**", inline=True)
-    if next_level_role:
-        embed.add_field(name="Next Role",
-                        value=f"Level **{next_level_role[0]}** -> `{next_level_role[1]}`",
-                        inline=False)
-    await send_reply(ctx, embed=embed)
+    embed = discord.Embed(color=0x2b2d31)
+    embed.set_author(name=f"{member.display_name}'s Account", icon_url=member.display_avatar.url)
+    embed.description = f"🎖️ **LEVEL ➔** `{level}`\n\n"
+    embed.add_field(name="🧪 XP", value=f"`{xp:,} / {needed:,}`", inline=True)
+    embed.add_field(name="Prestige", value=f"`0 / 10`", inline=True)
+    embed.set_thumbnail(url="https://i.imgur.com/D2e9x3S.png")
+    
+    view = discord.ui.View()
+    btn = discord.ui.Button(label="Leaderboard", emoji="🏆", style=discord.ButtonStyle.secondary)
+    
+    async def lb_callback(interaction: discord.Interaction):
+        await interaction.response.defer()
+        await lb(ctx)
+        
+    btn.callback = lb_callback
+    view.add_item(btn)
+    
+    await send_reply(ctx, embed=embed, view=view)
 
 @bot.command()
 async def vctime(ctx, member: discord.Member = None):
@@ -1231,21 +1259,24 @@ async def lb(ctx):
               (str(ctx.guild.id),))
     rows = c.fetchall()
     conn.close()
-    embed = discord.Embed(title="Cookie Leaderboard", color=0xF39C12)
+    embed = discord.Embed(title="🍪 __Cookies Leaderboard__", color=0x2b2d31)
+    embed.set_thumbnail(url="https://i.imgur.com/WbZq1kL.png")
     medals = ["🥇", "🥈", "🥉"]
     rank = 0
+    desc = ""
     for uid, jar, vault, level in rows:
         member = ctx.guild.get_member(int(uid))
         if not member or member.bot:
             continue
-        prefix = medals[rank] if rank < 3 else f"#{rank+1}"
-        name = member.display_name
-        embed.add_field(name=f"{prefix} {name}", value=f"{jar+vault:,} {COOKIE_EMOJI} · Lvl {level}", inline=False)
+        prefix = medals[rank] if rank < 3 else "👤"
+        desc += f"• {prefix} {member.mention} ➔ `{jar+vault:,} 🍪`\n\n"
         rank += 1
         if rank >= 10:
             break
     if rank == 0:
-        embed.description = "No human members found on the leaderboard yet."
+        desc = "No human members found on the leaderboard yet."
+    embed.description = desc
+    embed.set_footer(text=f"Requested by {ctx.author.display_name}", icon_url=ctx.author.display_avatar.url)
     await send_reply(ctx, embed=embed)
 
 @bot.command()
@@ -1579,131 +1610,186 @@ async def rl(ctx, amount: str, choice: str):
 # Truth and dare
 # -----------------------------------------------------------------------------
 TRUTH_BASE = [
-    "What is one thing about yourself you hide from most people?",
-    "What is the most awkward thing that happened to you this month?",
-    "What is a habit you keep trying to quit but still cannot?",
-    "Who in this server surprised you the most in a good way?",
-    "What is one decision you still regret?",
-    "What is the pettiest argument you have ever had?",
-    "What is the weirdest search in your browser history this week?",
-    "What is one thing you pretend to like but actually do not?",
-    "What is your biggest fear that people here do not know?",
-    "What is one secret talent you almost never show?",
-    "What is the most impulsive thing you bought recently?",
-    "What is the most embarrassing autocorrect fail you remember?",
-    "What is one lie you told to avoid trouble?",
-    "What is the hardest truth someone told you that helped you grow?",
-    "What is the one message you typed and deleted today?",
-]
-
-TRUTH_OPENERS = [
-    "What is the most awkward thing you have done while {topic}?",
-    "When did you last feel guilty about {topic}?",
-    "What is one thing you would undo about {topic}?",
-    "What is a truth you never say out loud about {topic}?",
-    "What is your funniest fail related to {topic}?",
-    "What is your biggest overreaction involving {topic}?",
-    "What is the most unexpected lesson you learned from {topic}?",
-    "What is one red flag you ignored when it came to {topic}?",
-    "What is the most dramatic moment you had around {topic}?",
-    "What is the boldest thing you did because of {topic}?",
-    "What is one memory about {topic} that still makes you cringe?",
-    "What is one thing you wish people understood about your {topic}?",
-    "What was the most chaotic choice you made while dealing with {topic}?",
-    "What is one thing you secretly admire in others about {topic}?",
-    "What is one unpopular opinion you have about {topic}?",
-    "What is a mistake you made with {topic} that taught you a lot?",
-    "What is your best kept secret related to {topic}?",
-    "What is one thing you fake confidence about in {topic}?",
-    "What is one thing you avoid admitting about {topic}?",
-    "What is your most dramatic story involving {topic}?",
-]
-
-TRUTH_TOPICS = [
-    "school", "work", "friendships", "relationships", "gaming", "social media", "money", "fitness",
-    "your sleep schedule", "your daily routine", "late-night texting", "your music taste", "fashion choices",
-    "your first impression", "your confidence", "your productivity", "your mood swings", "family moments",
-    "team projects", "meeting new people", "group chats", "your phone habits", "your food choices",
-    "your worst procrastination", "handling stress", "public speaking", "taking risks", "being jealous",
-    "being competitive", "making promises", "trust issues", "being stubborn", "pet peeves", "awkward silence",
-    "your most recent crush", "your favorite excuses", "random late-night thoughts", "taking screenshots",
-    "saving messages", "deleting messages",
-]
-
-TRUTH_FOLLOWUPS = [
-    "Be honest.",
-    "No dodging allowed.",
-    "Give details.",
-    "Tell the full story.",
+    "What’s the most embarrassing thing you’ve done in public?",
+    "What’s a lie you told recently?",
+    "Who was your first crush?",
+    "What’s the weirdest dream you’ve ever had?",
+    "What’s something you’ve never told your parents?",
+    "Have you ever stalked someone’s social media for hours?",
+    "What’s your biggest fear?",
+    "What’s the most childish thing you still do?",
+    "Have you ever pretended to be sick to skip something?",
+    "What’s the dumbest thing you’ve spent money on?",
+    "What’s your guilty pleasure song?",
+    "Have you ever cried during a movie? Which one?",
+    "What’s the meanest thing you’ve ever said to someone?",
+    "What’s your biggest insecurity?",
+    "What’s the weirdest food combination you secretly like?",
+    "Have you ever had a crush on a friend?",
+    "What’s the most awkward text you’ve accidentally sent?",
+    "If you could switch lives with anyone for a day, who would it be?",
+    "What’s the worst haircut you’ve ever had?",
+    "Have you ever blamed someone else for something you did?",
+    "What’s your most useless talent?",
+    "What’s the strangest rumor you’ve heard about yourself?",
+    "What’s something you wish you were better at?",
+    "Have you ever snooped through someone’s phone?",
+    "What’s the weirdest thing you do when you’re alone?",
+    "What’s your biggest pet peeve?",
+    "Have you ever laughed at the wrong moment?",
+    "What’s the cringiest phase you’ve gone through?",
+    "What’s the longest you’ve gone without showering?",
+    "What’s a secret you’ve kept from your best friend?",
+    "Have you ever had a crush on a teacher or celebrity?",
+    "What’s the most awkward interaction you’ve had with a crush?",
+    "What’s one thing you regret doing at school?",
+    "Have you ever ghosted someone?",
+    "What’s your worst habit?",
+    "If you had to delete one app forever, which would hurt the most?",
+    "What’s your funniest childhood memory?",
+    "What’s the most trouble you’ve ever gotten into?",
+    "Have you ever broken something and blamed someone else?",
+    "What’s your biggest irrational fear?",
+    "What’s the weirdest thing in your search history?",
+    "What’s your most toxic trait?",
+    "Have you ever had an imaginary argument in the shower?",
+    "What’s the worst excuse you’ve used?",
+    "What’s the most awkward family moment you’ve witnessed?",
+    "What’s something you pretend to like but actually don’t?",
+    "Have you ever had a crush on two people at once?",
+    "What’s your biggest flex?",
+    "What’s one thing you’d change about yourself?",
+    "What’s the funniest lie you believed as a kid?",
+    "What’s the weirdest compliment you’ve ever received?",
+    "Have you ever accidentally insulted someone?",
+    "What’s the most useless thing you own?",
+    "What’s your worst fashion mistake?",
+    "What’s the strangest thing you’ve done out of boredom?",
+    "What’s your most awkward school memory?",
+    "Have you ever pretended to know something you didn’t?",
+    "What’s the funniest thing you’ve overheard?",
+    "What’s your biggest “instant regret” moment?",
+    "What’s the weirdest nickname you’ve ever had?",
+    "If I were a snack, what snack would I be?",
+    "What song would play when I walk into a room?",
+    "If we were in a rom-com, who would fall first?",
+    "What’s one cheesy pickup line you secretly like?",
+    "If you had to dedicate a love song to someone here, what song would it be?",
+    "What’s more powerful: love at first sight or Wi-Fi?",
+    "If someone wrote a poem about you, what would the title be?",
+    "What’s your idea of the perfect late-night conversation?",
+    "If your love life was a movie, what genre would it be?",
+    "What’s the corniest thing you’ve ever done for someone you liked?"
 ]
 
 DARE_BASE = [
-    "Send one message in full dramatic movie-trailer style.",
-    "Speak in rhyme for your next 3 messages.",
-    "Drop a 10-second voice note with your best villain laugh.",
-    "Write a 2-line motivational quote for the server.",
-    "Change your nickname to something funny for 10 minutes.",
-    "Type your next message with only one hand.",
-    "Send a fake weather report for this chat right now.",
-    "Describe your mood using only food names.",
-    "Give someone in chat a very specific genuine compliment.",
-    "Write a 3-line rap about cookies.",
-    "React to the next 5 messages with the same emoji.",
-    "Tell a joke and commit to it even if nobody laughs.",
+    "Do your best celebrity impression for 1 minute.",
+    "Send the last meme in your gallery to someone random.",
+    "Speak in an accent until your next turn.",
+    "Dance with no music for 30 seconds.",
+    "Let the group choose your profile picture for a day.",
+    "Try to lick your elbow.",
+    "Sing the chorus of your favorite song dramatically.",
+    "Text someone “I have a confession…” and don’t reply for 10 minutes.",
+    "Do 15 jumping jacks while naming animals.",
+    "Pretend to be a news reporter covering a ridiculous event.",
+    "Eat a snack without using your hands.",
+    "Recreate your favorite emoji face.",
+    "Let someone scroll through your camera roll for 10 seconds.",
+    "Talk like a robot for the next 5 minutes.",
+    "Call a friend and talk only in movie quotes.",
+    "Wear your shirt backwards for the next 3 rounds.",
+    "Make up a rap about the person to your left.",
+    "Act like your favorite teacher for 1 minute.",
+    "Try to juggle 3 random objects.",
+    "Let the group give you a harmless nickname for the rest of the game.",
+    "Post “I’m finally famous” on your story.",
+    "Eat a spoonful of something spicy or sour.",
+    "Pretend the floor is lava for 1 minute.",
+    "Let someone type a sentence and make it your status.",
+    "Speak only in questions for the next 3 rounds.",
+    "Show the weirdest photo on your phone.",
+    "Attempt your best runway walk.",
+    "Read your last text out loud.",
+    "Balance something on your head for 1 minute.",
+    "Pretend you’re in a dramatic soap opera scene.",
+    "Make your best evil villain laugh.",
+    "Try to touch your nose with your tongue.",
+    "Act like a cat until your next turn.",
+    "Send a random “hey” text to the 7th contact in your phone.",
+    "Tell a fake inspirational speech about potatoes.",
+    "Let someone draw a tiny doodle on your hand.",
+    "Do your best anime character impression.",
+    "Spin around 10 times and try to walk straight.",
+    "Try to say the alphabet backwards.",
+    "Let the group pick a song for you to lip-sync.",
+    "Pretend to cry dramatically over losing a pencil.",
+    "Wear socks on your hands for 2 minutes.",
+    "Imitate another player until someone guesses who it is.",
+    "Make up a handshake with the person next to you.",
+    "Act like you just won an Oscar.",
+    "Say 5 nice things about the person across from you.",
+    "Try to freestyle rap for 30 seconds.",
+    "Do your best baby voice for 1 minute.",
+    "Pretend you’re a fitness influencer teaching a workout.",
+    "Let someone choose a word you must use in every sentence for 5 minutes.",
+    "Make the weirdest face possible and hold it for 20 seconds.",
+    "Narrate everything you do like a nature documentary.",
+    "Try to moonwalk across the room.",
+    "Call someone and sing “Happy Birthday” even if it’s not their birthday.",
+    "Trade one clothing item with the person next to you for 10 minutes.",
+    "Attempt a magic trick with random objects.",
+    "Talk in slow motion until your next turn.",
+    "Let the group ask you 3 rapid-fire questions you must answer instantly.",
+    "Pretend to be a waiter taking everyone’s order dramatically.",
+    "Try to wink continuously for 30 seconds.",
+    "Make a dramatic movie trailer voice about your life.",
+    "Let someone style your hair however they want.",
+    "Attempt your best football/sports commentary voice.",
+    "Pretend you’re a famous influencer doing a livestream.",
+    "Act like you’re terrified of a harmless object.",
+    "Speak like an old grandparent for 2 minutes.",
+    "Try to invent a new dance move.",
+    "Hold a funny pose until your next turn.",
+    "Do an impression of your favorite fictional character.",
+    "Let someone send an emoji-only message from your phone.",
+    "Make up a random conspiracy theory on the spot.",
+    "Pretend you’re in a cooking show while making a snack.",
+    "Do your best “main character” walk.",
+    "Speak using only song lyrics for 2 minutes.",
+    "Try to do a cartwheel or fake one dramatically.",
+    "Tell a joke in the most serious voice possible.",
+    "Act like you’re seeing snow for the first time.",
+    "Wear a blanket like a superhero cape for the next round.",
+    "Pretend your hand is a phone and have a dramatic conversation.",
+    "Do your best laugh imitation of someone in the room.",
+    "Make up a random holiday and explain how it’s celebrated.",
+    "Let the group pick an animal you must imitate.",
+    "Try to say a tongue twister 5 times fast.",
+    "Walk across the room like a model carrying invisible groceries.",
+    "Pretend to be a game show host.",
+    "Let someone pick a random object for you to advertise dramatically.",
+    "Freeze every time someone says your name until your next turn.",
+    "Do your best superhero landing pose.",
+    "Pretend you’re teaching aliens how humans use phones.",
+    "Make up a ridiculous rumor about yourself.",
+    "Let someone choose a funny hairstyle for you.",
+    "Speak as if you’re narrating a horror movie.",
+    "Try to dance like your parents would at a wedding.",
+    "Act like you’re stuck in slow internet buffering.",
+    "Pretend you’re a detective solving the mystery of missing snacks.",
+    "Make a heart with your hands and dramatically thank the group.",
+    "Say the first word that comes to mind after every sentence for 1 minute.",
+    "Pretend you’re auditioning for a superhero movie.",
+    "Reenact your most embarrassing moment without explaining it.",
+    "End the game with your most dramatic mic-drop exit."
 ]
 
-DARE_ACTIONS = [
-    "send a voice note", "write a mini poem", "drop a meme", "type a dramatic confession", "create a fake headline",
-    "write a fake ad", "make a 2-line speech", "give a motivational shoutout", "post a one-line roast",
-    "write a fake review", "send a roleplay line", "do a short countdown", "make a challenge message",
-    "do a quick impression", "type in all caps", "type in lowercase only", "use only questions",
-    "respond with only emojis", "talk like a sports commentator", "talk like a news anchor",
-]
+def _generate_truths(target=1):
+    return TRUTH_BASE
 
-DARE_TOPICS = [
-    "about your day", "about this server", "about cookies", "about your last game", "about your weekend plan",
-    "about your biggest goal", "about your favorite song", "about your sleep schedule", "about your mood",
-    "about your pet peeve", "about your latest awkward moment", "about your first impression here",
-    "about your funniest fail", "about your most random thought", "about your favorite food", "about your dream job",
-    "about your current energy", "about your last selfie", "about your vibe right now", "about your best friend",
-]
-
-DARE_CONSTRAINTS = [
-    "without using the letter e", "in under 15 words", "in exactly 2 sentences", "like a movie villain",
-    "like a motivational coach", "like you are on live TV", "as if it is breaking news", "as if you are a wizard",
-    "as if you are a robot", "as if you are whispering a secret", "as if you are super confident",
-    "as if you just won a championship", "as if you are narrating a documentary", "while being extra dramatic",
-]
-
-
-def _generate_truths(target=2400):
-    pool = list(TRUTH_BASE)
-    seen = set(pool)
-    for opener in TRUTH_OPENERS:
-        for topic in TRUTH_TOPICS:
-            for follow in TRUTH_FOLLOWUPS:
-                q = f"{opener.format(topic=topic)} {follow}"
-                if q not in seen:
-                    seen.add(q)
-                    pool.append(q)
-                if len(pool) >= target:
-                    return pool
-    return pool
-
-
-def _generate_dares(target=2400):
-    pool = list(DARE_BASE)
-    seen = set(pool)
-    for action in DARE_ACTIONS:
-        for topic in DARE_TOPICS:
-            for constraint in DARE_CONSTRAINTS:
-                d = f"{action.capitalize()} {topic} {constraint}."
-                if d not in seen:
-                    seen.add(d)
-                    pool.append(d)
-                if len(pool) >= target:
-                    return pool
-    return pool
+def _generate_dares(target=1):
+    return DARE_BASE
 
 
 TRUTHS = _generate_truths(2400)
