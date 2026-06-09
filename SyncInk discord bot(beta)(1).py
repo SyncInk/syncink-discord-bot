@@ -7,9 +7,12 @@ import time
 from collections import deque
 from datetime import datetime, timedelta
 import sqlite3
+from aiohttp import web
 
 # Bot setup
-intents = discord.Intents.all()
+intents = discord.Intents.default()
+intents.message_content = True
+intents.members = True
 bot = commands.Bot(command_prefix="?", intents=intents, help_command=None)
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -342,7 +345,10 @@ async def check_level_up(member, guild_id):
             if unlocked_roles:
                 embed.add_field(name="Role Unlocked", value=", ".join(f"`{name}`" for name in unlocked_roles), inline=False)
             embed.set_thumbnail(url=member.display_avatar.url)
-            await channel.send(embed=embed)
+            try:
+                await channel.send(embed=embed)
+            except Exception:
+                pass
 
 # Message milestone roles
 MSG_ROLES = {
@@ -383,7 +389,10 @@ async def check_message_milestone(member, guild_id, _weekly_msgs=None):
                 embed.add_field(name="Rob Cooldown Tier", value="10 minutes once weekly msgs hit 100+", inline=False)
             if threshold == 200:
                 embed.add_field(name="Rob Cooldown Tier", value="5 minutes once weekly msgs hit 200+", inline=False)
-            await channel.send(embed=embed)
+            try:
+                await channel.send(embed=embed)
+            except Exception:
+                pass
 
 # Voice chat time roles
 VC_ROLES = {
@@ -426,7 +435,10 @@ async def check_vc_milestones(member, guild_id, prev_vc_seconds, total_vc_second
             embed.description = f"{member.mention} crossed **{h} hours** in voice chat."
             embed.add_field(name="Unlocked Role", value=f"`{role_name}`", inline=True)
             embed.add_field(name="Cookie Reward", value=f"+{cookie_reward:,} cookies", inline=True)
-            await channel.send(embed=embed)
+            try:
+                await channel.send(embed=embed)
+            except Exception:
+                pass
 
 # Rob cooldown based on weekly messages
 def get_rob_cooldown_minutes(weekly_msgs):
@@ -459,11 +471,31 @@ def cd_remaining(last_time_str, hours):
     return cd_remaining_minutes(last_time_str, int(hours * 60))
 
 # -----------------------------------------------------------------------------
+# HEALTH CHECK (For Render Deployment)
+# -----------------------------------------------------------------------------
+async def handle_ping(request):
+    return web.Response(text="Bot is alive!")
+
+async def start_server():
+    app = web.Application()
+    app.router.add_get('/', handle_ping)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    port = int(os.environ.get("PORT", 8080))
+    site = web.TCPSite(runner, '0.0.0.0', port)
+    await site.start()
+    print(f"Web server started on port {port}")
+
+async def setup_hook():
+    bot.loop.create_task(start_server())
+
+bot.setup_hook = setup_hook
+
+# -----------------------------------------------------------------------------
 # EVENTS
 # -----------------------------------------------------------------------------
 @bot.event
 async def on_ready():
-    init_db()
     await ensure_weekly_message_reset()
     if not reset_weekly_messages.is_running():
         reset_weekly_messages.start()
@@ -504,9 +536,13 @@ async def on_message(message):
                 xp=row[6] + XP_PER_MESSAGE,
                 total_messages=new_total,
                 weekly_messages=new_weekly)
-    await check_level_up(message.author, message.guild.id)
-    await check_message_milestone(message.author, message.guild.id, new_weekly)
-    await bot.process_commands(message)
+    try:
+        await check_level_up(message.author, message.guild.id)
+        await check_message_milestone(message.author, message.guild.id, new_weekly)
+    except Exception as e:
+        print(f"Error checking milestones: {e}")
+    finally:
+        await bot.process_commands(message)
 
 @bot.event
 async def on_message_delete(message):
@@ -653,8 +689,11 @@ async def update_vc_cookies():
             if guild:
                 member = guild.get_member(int(user_id))
                 if member and not member.bot:
-                    await check_level_up(member, guild_id)
-                    await check_vc_milestones(member, guild_id, prev_vc, new_vc)
+                    try:
+                        await check_level_up(member, guild_id)
+                        await check_vc_milestones(member, guild_id, prev_vc, new_vc)
+                    except Exception as e:
+                        print(f"Error checking VC milestone: {e}")
     conn.commit()
     conn.close()
 
@@ -2136,6 +2175,8 @@ async def on_command_error(ctx, error):
         print(f"Unhandled error: {error}")
 
 # RUN
+init_db()
+
 TOKEN = os.getenv("DISCORD_TOKEN")
 if not TOKEN:
     print("ERROR: Set DISCORD_TOKEN environment variable!")
