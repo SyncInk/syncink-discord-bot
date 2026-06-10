@@ -23,15 +23,29 @@ VAULT_CAP = 3000
 COOKIE_EMOJI = "🍪"
 
 # Database
+class GlobalDB:
+    def __init__(self, path):
+        self.conn = sqlite3.connect(path, timeout=30.0, check_same_thread=False)
+        self.conn.execute("PRAGMA journal_mode=WAL")
+        self.conn.execute("PRAGMA synchronous=NORMAL")
+        self.conn.execute("PRAGMA foreign_keys=ON")
+    def cursor(self):
+        return self.conn.cursor()
+    def commit(self):
+        self.conn.commit()
+    def close(self):
+        pass
+
+_global_db = None
 def get_conn():
-    return sqlite3.connect(DB_PATH, timeout=30)
+    global _global_db
+    if _global_db is None:
+        _global_db = GlobalDB(DB_PATH)
+    return _global_db
 
 def init_db():
     conn = get_conn()
     c = conn.cursor()
-    c.execute("PRAGMA journal_mode=WAL")
-    c.execute("PRAGMA synchronous=NORMAL")
-    c.execute("PRAGMA foreign_keys=ON")
 
     c.execute("""CREATE TABLE IF NOT EXISTS users (
         guild_id TEXT, user_id TEXT,
