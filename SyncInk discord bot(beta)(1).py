@@ -16,7 +16,10 @@ intents.members = True
 bot = commands.Bot(command_prefix="?", intents=intents, help_command=None, case_insensitive=True)
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DB_PATH = os.path.join(BASE_DIR, "bot_data.db")
+DATA_DIR = os.path.join(BASE_DIR, "data")
+if not os.path.exists(DATA_DIR):
+    os.makedirs(DATA_DIR)
+DB_PATH = os.path.join(DATA_DIR, "bot_data.db")
 WEEKLY_RESET_HOURS = 168
 SETTINGS_COLUMNS = {"welcome_channel", "log_channel", "msg_log_channel", "voice_log_channel", "autorole", "level_channel"}
 VAULT_CAP = 3000
